@@ -11,8 +11,10 @@ Rather than Sudo'ing this will allow docker commands to be run without envoking 
 
 ### Create network for Traefik
 
-`
+```
 docker network create --driver=macvlan \
+
  --gateway=192.168.0.254 --subnet=192.168.0.0/24 --ip-range=192.168.0.0/26 \
+ 
  -o parent=ovs_eth0 -o macvlan_mode=bridge vlan_home
-`
+```
