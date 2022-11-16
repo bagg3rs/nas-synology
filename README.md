@@ -50,7 +50,6 @@ Click NFS Permissions > Create
 4. Create persistent mount (e.g. will be around after reboot)
 `sudo nano /etc/fstab`
 Add this line to the bottom, again replacing ip addresses / hostname and file paths as needed:
-`192.168.XX.XX:/volume1/backup /mnt/share nfs defaults 0 0`
-Exit, save the file, and reboot the pi (sudo reboot now).
-Once the Pi is back up, ensure the mount worked with 
-`ls /mnt/backup`
+`192.168.XX.XX:/volume1/backup /mnt/backup nfs defaults 0 0`
+Exit, save the file.
+5. Test fstab by running `mount -a` and then `ls /mnt/backup`
