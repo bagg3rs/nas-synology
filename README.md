@@ -45,7 +45,7 @@ Click NFS Permissions > Create
 `sudo mkdir /mnt/backup`
 
 3. Test access – `replace IP address/ hostname with your details`
-`sudo mount -t nfs4 -o proto=tcp,port=2049 192.168.XX.XX:/volume1/backup /mnt/backup`
+`sudo mount -t nfs -o proto=tcp,port=2049 192.168.XX.XX:/volume1/backup /mnt/backup`
 4. Create persistent mount (e.g. will be around after reboot)
 `sudo nano /etc/fstab`
 Add this line to the bottom, again replacing ip addresses / hostname and file paths as needed:
