@@ -40,8 +40,7 @@ Click NFS Permissions > Create
 ### Mount NFS Share on Pi's
 
 1. From the terminal – install nfs if not already installed:
-`sudo apt update`
-`sudo apt install nfs-common`
+`sudo apt update && sudo apt install nfs-common`
 2. Create the mount directory – change the path as appropriate:
 `sudo mkdir /mnt/backup`
 
