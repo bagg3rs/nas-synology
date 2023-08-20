@@ -18,6 +18,33 @@ docker network create --driver=macvlan \
  
  -o parent=ovs_eth0 -o macvlan_mode=bridge vlan_home
 ```
+
+### Running OpenVPN
+
+1. Install VPN Server from package manager
+2. After an upgrade you may need to run docker-compose from ssh session.
+
+If you ever get the `ERROR: Cannot open TUN/TAP dev /dev/net/tun: No such device` especially after a system upgrade then run or schedule the following
+
+```
+#!/bin/sh
+
+# Create the necessary file structure for /dev/net/tun
+if ( [ ! -c /dev/net/tun ] ); then
+  if ( [ ! -d /dev/net ] ); then
+    mkdir -m 755 /dev/net
+  fi
+  mknod /dev/net/tun c 10 200
+  chmod 0755 /dev/net/tun
+fi
+
+# Load the tun module if not already loaded
+if ( !(lsmod | grep -q "^tun\s") ); then
+  insmod /lib/modules/tun.ko
+fi
+
+```
+
 ## Backup Pi's 🥧 to NFS share
 I want to backup database and configuration files to my NAS.
 
