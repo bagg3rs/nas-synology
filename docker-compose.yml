@@ -1,0 +1,251 @@
+version: "3.4"
+#Increase timeout period to 120 seconds.
+services:
+  vpn:
+    container_name: vpn
+    image: dperson/openvpn-client:latest
+    networks:
+      - vlan_home
+    cap_add:
+      - net_admin # required to modify network interfaces
+    restart: unless-stopped
+    devices:
+      - /dev/net/tun #points to the tun device created by the syno VPN package
+    volumes:
+      - /volume1/docker/config/vpn:/vpn #The location of our config files
+    security_opt:
+      - label:disable
+    ports:
+#      - 8112:8112 # ports for web UI to be reachable from local network
+    command: '-f "" -r 192.168.0.0/24' # enable firewall and route local network traffic
+    environment:
+      OPENVPN_OPTS: '--mute-replay-warnings'
+      DNS: --9.9.9.9 #this will override your default DNS and avoids connection issues you can change this value if you wish
+    command: '-f "" -r "192.168.0.0/24"'  # -r 192.168.254.0/24 -f  # amend this in line with your local network settings
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.deluge.service=deluge"
+      - "traefik.http.routers.deluge.entrypoints=websecure"
+      - "traefik.http.routers.deluge.tls=true"
+      - "traefik.http.routers.deluge.tls.certresolver=myresolver"
+      - "traefik.http.routers.deluge.rule=Host(`${DELUGE}`)"
+      - "traefik.http.services.deluge.loadbalancer.server.port=8112"
+      - "traefik.http.routers.prowlarr.service=prowlarr"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.tls=true"
+      - "traefik.http.routers.prowlarr.tls.certresolver=myresolver"
+      - "traefik.http.routers.prowlarr.rule=Host(`${PROWLARR}`)"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+      - "traefik.http.routers.qbittorrent.service=qbittorrent"
+      - "traefik.http.routers.qbittorrent.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent.tls=true"
+      - "traefik.http.routers.qbittorrent.tls.certresolver=myresolver"
+      - "traefik.http.routers.qbittorrent.rule=Host(`${QBITTORRENT}`)"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+
+  traefik:
+    image: "traefik:${VERSION}"
+    container_name: "traefik"
+    command:
+      - "--log.level=${LOG}"
+      # - "--api.insecure=true"
+      - "--api=true"
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure" #redirect all traffic to https
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https" #redirect all traffic to https
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge.provider=${PROVIDER}"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge.resolvers=${RESOLVER}"
+      # - "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory" #For testing
+      - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      #  File providers for external services
+      - --providers.file.filename=/etc/traefik/config.yml # Using file for reading the config
+      - --providers.file.watch=true
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entryPoint=metrics
+      - --entryPoints.metrics.address=:8082
+    restart: "unless-stopped"
+    labels:
+      # Dashboard
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK}`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=admin"
+      - "traefik.http.routers.traefik.tls.certresolver=myresolver"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.middlewares=authtraefik"
+      - "traefik.http.middlewares.authtraefik.basicauth.users=${TRAEFIKUSER}" # user/password https://hostingcanada.org/htpasswd-generator/ md5 # and then double all $ to $$ to avoid docker-compose 
+      - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+#      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+    ports:
+#     - "80:80"
+      - "8080:8080"
+#      - "443:443"
+    environment: 
+      - TZ
+      - CF_DNS_API_TOKEN
+      - CF_ZONE_API_TOKEN
+    networks:
+      vlan_home:
+        ipv4_address: "${IPv4_PREFIX}.55"
+      traefik_proxy: {}
+      traefik_socket: {}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/traefik/traefik.yml
+      - letsencrypt:/letsencrypt
+
+  librespeed:
+    image: ghcr.io/linuxserver/librespeed
+    container_name: librespeed
+    environment:
+      - PUID=${PUID}
+      - PGID=${PUID}
+      - TZ=Europe/London
+      # - PASSWORD=PASSWORD
+      # - CUSTOM_RESULTS=false #optional
+      # - DB_TYPE=sqlite #optional
+      # - DB_NAME=DB_NAME #optional
+      # - DB_HOSTNAME=DB_HOSTNAME #optional
+      # - DB_USERNAME=DB_USERNAME #optional
+      # - DB_PASSWORD=DB_PASSWORD #optional
+      # - DB_PORT=DB_PORT #optional
+#    volumes:
+#      - /volume1/docker/config:/config
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.speedtest.entrypoints=websecure"
+      - "traefik.http.routers.speedtest.tls=true"
+      - "traefik.http.routers.speedtest.tls.certresolver=myresolver"
+      - "traefik.http.routers.speedtest.rule=Host(`${SPEEDTEST}`)"
+      - "traefik.http.services.speedtest.loadbalancer.server.port=80"
+    networks:
+      - vlan_home
+
+  heimdall:
+    image: ghcr.io/linuxserver/heimdall
+    container_name: heimdall
+    environment:
+      - PUID=${PUID}
+      - PGID=${PUID}
+      - TZ=Europe/London
+    volumes:
+      - /volume1/docker/config/heimdall:/config
+#    ports:
+    #   - 80:80
+#      - 446:443
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.heimdall.entrypoints=web"
+      - "traefik.http.routers.heimdall.rule=Host(`${HEIMDALL}`)"
+      - "traefik.http.routers.heimdall.entrypoints=websecure"
+      - "traefik.http.routers.heimdall.tls=true"
+      - "traefik.http.middlewares.heimdall-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.heimdall.tls.certresolver=myresolver"
+      - "traefik.http.routers.heimdall.middlewares=heimdall-https-redirect"
+      # - "traefik.http.routers.heimdall-secure.entrypoints=websecure"
+      # - "traefik.http.routers.heimdall-secure.rule=Host(`${HEIMDALL}`)"
+      # - "traefik.http.routers.heimdall-secure.tls=true"
+      # - "traefik.http.routers.heimdall-secure.service=heimdall"
+      # - "traefik.http.routers.heimdall-secure.middlewares=authelia@docker"
+      - "traefik.http.services.heimdall.loadbalancer.server.port=80"
+    networks:
+      - vlan_home
+      
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    volumes:
+      - /volume1/docker/config/uptime-kuma:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    # ports:
+    #   - 3001:3001  # <Host Port>:<Container Port>
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.uptime-kuma.entrypoints=websecure"
+      - "traefik.http.routers.uptime-kuma.tls=true"
+      - "traefik.http.routers.uptime-kuma.tls.certresolver=myresolver"
+      - "traefik.http.routers.uptime-kuma.rule=Host(`${UPTIME}`)"
+      - "traefik.http.services.uptime-kuma.loadbalancer.server.port=3001"
+    networks:
+      - vlan_home
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /volume1/docker/config/portainer:/data
+   #  ports:
+   #    - 9000:9000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.routers.portainer.tls.certresolver=myresolver"
+      - "traefik.http.routers.portainer.rule=Host(`${PORTAINER}`)"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+    networks:
+      - vlan_home
+
+  code-server:
+    image: ghcr.io/linuxserver/code-server
+    container_name: code-server
+    environment:
+      - PUID=${PUID}
+      - PGID=${PUID}
+      - TZ=Europe/London
+      - DEFAULT_WORKSPACE=/workspace
+      # - PASSWORD=password #optional
+      # - HASHED_PASSWORD= #optional
+      # - SUDO_PASSWORD=password #optional
+      # - SUDO_PASSWORD_HASH= #optional
+      - PROXY_DOMAIN=${CODE} #optional
+    volumes:
+      # - code-server/config:/config
+      - /volume1/docker/config/code-server:/config
+      - /volume1/docker:/data
+#    ports:
+#      - 8443:8443
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.code-server.entrypoints=websecure"
+      - "traefik.http.routers.code-server.tls=true"
+      - "traefik.http.routers.code-server.tls.certresolver=myresolver"
+      - "traefik.http.routers.code-server.rule=Host(`${CODE}`)"
+      - "traefik.http.services.code-server.loadbalancer.server.port=8443"
+    networks:
+      - vlan_home
+
+volumes:
+  letsencrypt:
+  heimdall:
+  portainer_data:
+  code-server:
+    
+networks:
+  traefik_proxy: # For containers only accessed through Traefik
+    driver: bridge
+  traefik_socket: # For Traefik and the socket-proxy only
+    driver: bridge
+    internal: true
+  vlan_home:
+    external: true
