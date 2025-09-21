@@ -11,12 +11,68 @@ Rather than Sudo'ing this will allow docker commands to be run without envoking 
 
 ### Create network for Traefik
 
-```
-docker network create --driver=macvlan \
+**Important:** Use `eth0` as the parent interface (not `ovs_eth0`):
 
- --gateway=192.168.0.254 --subnet=192.168.0.0/24 --ip-range=192.168.0.0/26 \
- 
- -o parent=ovs_eth0 -o macvlan_mode=bridge vlan_home
+```bash
+docker network create --driver=macvlan \
+  --gateway=192.168.0.254 --subnet=192.168.0.0/24 --ip-range=192.168.0.0/26 \
+  -o parent=eth0 -o macvlan_mode=bridge vlan_home
+```
+
+### Automatic Network Creation on Startup
+
+The MacVLAN network gets deleted after Synology reboots, causing Docker containers to fail. Create an automatic startup script:
+
+1. **Create startup script:**
+```bash
+cat > /volume1/docker/startup.sh << 'EOF'
+#!/bin/bash
+# MacVLAN network startup script for Synology NAS
+
+# Wait for network to be ready
+sleep 30
+
+# Create MacVLAN network if it doesn't exist
+if ! /usr/local/bin/docker network ls | grep -q vlan_home; then
+    echo "Creating MacVLAN network..."
+    /usr/local/bin/docker network create --driver=macvlan \
+        --gateway=192.168.0.254 \
+        --subnet=192.168.0.0/24 \
+        --ip-range=192.168.0.0/26 \
+        -o parent=eth0 \
+        -o macvlan_mode=bridge \
+        vlan_home
+    echo "MacVLAN network created"
+else
+    echo "MacVLAN network already exists"
+fi
+
+# Start down-things stack
+cd /volume1/docker/down-things
+/usr/local/bin/docker-compose up -d
+
+echo "Startup script completed"
+EOF
+
+chmod +x /volume1/docker/startup.sh
+```
+
+2. **Set up Task Scheduler:**
+   - DSM > Control Panel > Task Scheduler
+   - Create > Triggered Task > User-defined script
+   - Name: "Docker Network Startup"
+   - User: root
+   - Schedule: Boot-up
+   - Run command: `/volume1/docker/startup.sh`
+
+### Docker Compose External Networks
+
+When using pre-created MacVLAN networks, configure your `docker-compose.yml` to use external networks:
+
+```yaml
+networks:
+  vlan_home:
+    external: true  # Use existing network instead of creating new one
 ```
 
 ### Running OpenVPN
@@ -26,7 +82,7 @@ docker network create --driver=macvlan \
 
 If you ever get the `ERROR: Cannot open TUN/TAP dev /dev/net/tun: No such device` especially after a system upgrade then run or schedule the following
 
-```
+```bash
 #!/bin/sh
 
 # Create the necessary file structure for /dev/net/tun
@@ -42,8 +98,34 @@ fi
 if ( !(lsmod | grep -q "^tun\s") ); then
   insmod /lib/modules/tun.ko
 fi
-
 ```
+
+### Resource Management
+
+Add resource limits to prevent containers from consuming unlimited resources:
+
+```yaml
+services:
+  service_name:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+```
+
+**Recommended limits:**
+- **Download clients** (nzbget, sonarr, radarr): 512MB-1GB RAM, 0.5-1.0 CPU
+- **Media servers** (jellyfin, plex): 2-4GB RAM, 1.0-2.0 CPU  
+- **VPN/Proxy** (traefik, vpn): 256-512MB RAM, 0.25-0.5 CPU
+- **Utilities** (portainer, monitoring): 128-256MB RAM, 0.1-0.25 CPU
 
 ## Backup Pi's 🥧 to NFS share
 I want to backup database and configuration files to my NAS.
@@ -79,3 +161,20 @@ Add this line to the bottom, again replacing ip addresses / hostname and file pa
 `192.168.XX.XX:/volume1/backup /mnt/backup nfs defaults 0 0`
 Exit, save the file.
 5. Test fstab by running `mount -a` and then `ls /mnt/backup`
+
+## Troubleshooting
+
+### Common Issues
+
+**"Download stack partially down"**
+- Usually caused by MacVLAN network missing after reboot
+- Solution: Use the automatic startup script above
+
+**"Pool overlaps with other one on this address space"**
+- Docker trying to create conflicting networks
+- Solution: Use `external: true` in docker-compose.yml networks section
+
+**VPN containers failing to start**
+- Check TUN device exists: `ls -la /dev/net/tun`
+- Check TUN module loaded: `lsmod | grep tun`
+- Recreate TUN device if needed (see OpenVPN section above)
