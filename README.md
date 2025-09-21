@@ -122,7 +122,6 @@ services:
 ```
 
 **Recommended limits:**
-- **Download clients** (nzbget, sonarr, radarr): 512MB-1GB RAM, 0.5-1.0 CPU
 - **Media servers** (jellyfin, plex): 2-4GB RAM, 1.0-2.0 CPU  
 - **VPN/Proxy** (traefik, vpn): 256-512MB RAM, 0.25-0.5 CPU
 - **Utilities** (portainer, monitoring): 128-256MB RAM, 0.1-0.25 CPU
