@@ -17,11 +17,10 @@ services:
       - label:disable
     ports:
 #      - 8112:8112 # ports for web UI to be reachable from local network
-    command: '-f "" -r 192.168.0.0/24' # enable firewall and route local network traffic
+    command: '-f "" -r "192.168.0.0/24"'  # Enable firewall and route local network traffic
     environment:
       OPENVPN_OPTS: '--mute-replay-warnings'
-      DNS: --9.9.9.9 #this will override your default DNS and avoids connection issues you can change this value if you wish
-    command: '-f "" -r "192.168.0.0/24"'  # -r 192.168.254.0/24 -f  # amend this in line with your local network settings
+      DNS: --9.9.9.9 #this will override your default DNS and avoids connection issues
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -49,8 +48,6 @@ services:
     container_name: "traefik"
     command:
       - "--log.level=${LOG}"
-      # - "--api.insecure=true"
-      - "--api=true"
       - "--api.dashboard=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
