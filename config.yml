@@ -1,0 +1,4 @@
+http:
+  serversTransports:
+    unifi-transport:
+      insecureSkipVerify: true

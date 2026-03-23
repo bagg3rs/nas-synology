@@ -101,6 +101,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/traefik/traefik.yml
+      - ./config.yml:/etc/traefik/config.yml:ro
       - letsencrypt:/letsencrypt
 
   librespeed:
